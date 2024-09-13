@@ -11,7 +11,6 @@
 #include <Common/Stopwatch.h>
 
 #include <mutex>
-#include <optional>
 
 
 namespace DB
@@ -29,7 +28,11 @@ public:
     WriteBufferFromHTTPServerResponse(
         HTTPServerResponse & response_,
         bool is_http_method_head_,
-        const ProfileEvents::Event & write_event_ = ProfileEvents::end());
+        const ProfileEvents::Event & write_event_ = ProfileEvents::end(),
+        const CompressionMethod & compression_method_ = CompressionMethod::None,
+        bool add_cors_header_ = false,
+        bool send_progress_ = false,
+        size_t send_progress_interval_ms_ = 100);
 
     ~WriteBufferFromHTTPServerResponse() override;
 
@@ -60,6 +63,9 @@ public:
 
     void setExceptionCode(int exception_code_);
 
+    /// FIXME
+    void startSendHeadersPublic();
+
 private:
     /// Send at least HTTP headers if no data has been sent yet.
     /// Use after the data has possibly been sent and no error happened (and thus you do not plan
@@ -69,7 +75,7 @@ private:
 
     /// Must be called under locked mutex.
     /// This method send headers, if this was not done already,
-    ///  but not finish them with \r\n, allowing to send more headers subsequently.
+    /// but not finish them with \r\n, allowing to send more headers subsequently.
     void startSendHeaders();
 
     /// Used to write the header X-ClickHouse-Progress / X-ClickHouse-Summary
@@ -89,23 +95,23 @@ private:
     HTTPServerResponse & response;
 
     bool is_http_method_head;
-    bool add_cors_header = false;
+    bool add_cors_header;
 
     bool initialized = false;
 
-    bool headers_started_sending = false;
-    bool headers_finished_sending = false;    /// If true, you could not add any headers.
+    std::atomic_bool headers_started_sending = false;
+    std::atomic_bool headers_finished_sending = false; /// If true, you could not add any headers.
 
     Progress accumulated_progress;
-    bool send_progress = false;
-    size_t send_progress_interval_ms = 100;
+    bool send_progress;
+    size_t send_progress_interval_ms;
     Stopwatch progress_watch;
 
-    CompressionMethod compression_method = CompressionMethod::None;
+    CompressionMethod compression_method;
 
     int exception_code = 0;
 
-    std::mutex mutex;    /// progress callback could be called from different threads.
+    std::mutex mutex; /// progress callback could be called from different threads.
 };
 
 }
