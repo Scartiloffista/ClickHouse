@@ -542,7 +542,7 @@ void HTTPHandler::processQuery(
 
     applyHTTPResponseHeaders(response, http_response_headers_override);
 
-    auto set_query_result = [&response, this] (const QueryResultDetails & details)
+    auto set_query_result = [&response, &used_output, this] (const QueryResultDetails & details)
     {
         response.add("X-ClickHouse-Query-Id", details.query_id);
 
@@ -555,6 +555,10 @@ void HTTPHandler::processQuery(
 
         if (details.timezone)
             response.add("X-ClickHouse-Timezone", *details.timezone);
+
+        /// Start sending headers early, as it requires access to the internal
+        /// WriteBuffer, which may also be used concurrently by compressing wrapper.
+        used_output.out_holder->startSendHeadersPublic();
     };
 
     auto handle_exception_in_output_format = [&](IOutputFormat & current_output_format, const String & format_name, const ContextPtr & context_, const std::optional<FormatSettings> & format_settings)
@@ -586,10 +590,6 @@ void HTTPHandler::processQuery(
             }
         }
     };
-
-    /// Start sending headers early, as it requires access to the internal
-    /// WriteBuffer, which may also be used concurrently by compressing wrapper.
-    used_output.out_holder->startSendHeadersPublic();
 
     executeQuery(
         *in,
